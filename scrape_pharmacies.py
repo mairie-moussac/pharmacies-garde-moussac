@@ -150,7 +150,7 @@ def render_html(garde_date: str, pharmacies: list) -> str:
         </div>""")
 
     date_line = (
-        f"<p style=\"margin-left:auto; margin-right:auto; font-size:1.4em; font-weight:bold;\">💊 Pharmacies de garde ouvertes le {garde_date} (dimanches et jours fériés).</p>"
+        f"<p style=\"margin-left:auto; margin-right:auto; font-size:1.4em; font-weight:bold;\">💊 Pharmacies de garde ouvertes le {garde_date}.</p>"
         if garde_date else "<p style=\"margin-left:auto; margin-right:auto; font-size:1.4em; font-weight:bold;\">💊 Pharmacies de garde ouvertes les dimanches et jours fériés.</p>"
     )
 
