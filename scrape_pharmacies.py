@@ -2,7 +2,7 @@
 """
 Récupère la liste des pharmacies de garde du Gard depuis
 https://www.gard30.fr/pharmacies-de-garde-dans-le-gard/
-et génère un fichier index.html prêt à être affiché dans Intramuros.
+et génère un fichier index.html aux couleurs de la mairie de Moussac.
 """
 
 import re
@@ -118,24 +118,40 @@ def render_html(garde_date: str, pharmacies: list) -> str:
     for p in pharmacies:
         tel_digits = re.sub(r"[^0-9+]", "", p["phone"]) if p["phone"] else ""
         
-        phone_html = ""
+        phone_button = ""
         if p["phone"]:
-            phone_html = f'<a href="tel:{tel_digits}" style="color: #0056b3; font-weight: bold; text-decoration: none;">📞 {p["phone"]}</a>'
+            phone_button = (
+                f'<a href="tel:{tel_digits}" style="display: inline-block; background-color: #eef6ff; '
+                f'color: #0056b3; padding: 6px 12px; border-radius: 20px; font-weight: bold; '
+                f'text-decoration: none; font-size: 0.88rem; margin-right: 6px; margin-top: 6px;">'
+                f'📞 {p["phone"]}</a>'
+            )
 
-        maps_html = ""
+        maps_button = ""
         if p["address"]:
             maps_url = f"https://www.google.com/maps/search/?api=1&query={quote_plus(p['address'])}"
-            maps_html = f'<a href="{maps_url}" target="_blank" rel="noopener" style="display: inline-block; background-color: #0056b3; color: #ffffff; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.85rem; font-weight: bold; margin-top: 6px;">📍 Itinéraire Google Maps</a>'
+            maps_button = (
+                f'<a href="{maps_url}" target="_blank" rel="noopener" style="display: inline-block; '
+                f'background-color: #0056b3; color: #ffffff !important; padding: 6px 12px; '
+                f'border-radius: 20px; font-weight: bold; text-decoration: none; font-size: 0.88rem; margin-top: 6px;">'
+                f'📍 Itinéraire Maps</a>'
+            )
 
-        secteur_html = f'<div style="color: #666666; font-style: italic; font-size: 0.85rem; margin-bottom: 4px;">Secteur : {p["secteur"]}</div>' if p["secteur"] else ""
+        secteur_html = (
+            f'<div style="color: #666666; font-style: italic; font-size: 0.85rem; margin-bottom: 4px;">'
+            f'Secteur : {p["secteur"]}</div>'
+            if p["secteur"] else ""
+        )
 
         rows.append(f"""
-        <div style="background-color: #ffffff; border: 1px solid #e0e0e0; border-left: 4px solid #0056b3; border-radius: 6px; padding: 12px 15px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <h3 style="margin: 0 0 4px 0; color: #0056b3; font-size: 1.05rem;">{p['name']}</h3>
+        <div style="background-color: #ffffff; border: 1px solid #dce5ef; border-left: 5px solid #0056b3; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+          <h3 style="margin: 0 0 4px 0; color: #0056b3; font-size: 1.1rem; font-family: Arial, sans-serif;">{p['name']}</h3>
           {secteur_html}
-          <div style="margin: 4px 0; font-size: 0.9rem; color: #333333;">🏠 {p['address']}</div>
-          <div style="margin: 6px 0 4px 0; font-size: 0.9rem;">{phone_html}</div>
-          <div>{maps_html}</div>
+          <div style="margin: 4px 0 6px 0; font-size: 0.92rem; color: #333333;">🏠 {p['address']}</div>
+          <div style="margin-top: 8px;">
+            {phone_button}
+            {maps_button}
+          </div>
         </div>""")
 
     return f"""<!DOCTYPE html>
@@ -145,7 +161,7 @@ def render_html(garde_date: str, pharmacies: list) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pharmacies de garde - Gard</title>
 </head>
-<body style="margin: 0; padding: 10px; font-family: Arial, sans-serif; background-color: #ffffff; color: #333333;">
+<body style="margin: 0; padding: 10px; font-family: Arial, Helvetica, sans-serif; background-color: #f4f7f9; color: #333333;">
 
   <div style="width: 100%; max-width: 100%; box-sizing: border-box;">
 
@@ -160,17 +176,17 @@ def render_html(garde_date: str, pharmacies: list) -> str:
     </div>
 
     <!-- Consignes / Informations complémentaires -->
-    <div style="background-color: #fff9e6; border-left: 4px solid #ffc107; padding: 12px 15px; margin-bottom: 15px; border-radius: 4px; font-size: 0.88rem; line-height: 1.5;">
+    <div style="background-color: #fff9e6; border-left: 4px solid #ffc107; padding: 12px 15px; margin-bottom: 15px; border-radius: 4px; font-size: 0.88rem; line-height: 1.5; color: #444444;">
       <strong>Information :</strong> La nuit, les dimanches et jours fériés, vous pouvez également composer le <strong>3237</strong> (0,35 € / min) ou contacter la Gendarmerie. En cas d'urgence vitale, composez le <strong>15</strong> (SAMU).
     </div>
 
     <!-- Liste des pharmacies -->
     <div style="width: 100%;">
-      {''.join(rows) if rows else '<p style="text-align: center; color: #666666;">Aucune pharmacie de garde répertoriée pour le moment.</p>'}
+      {''.join(rows) if rows else '<div style="background: #ffffff; padding: 20px; border-radius: 8px; text-align: center; color: #666666;">Aucune pharmacie de garde répertoriée pour le moment.</div>'}
     </div>
 
     <!-- Pied de page -->
-    <div style="text-align: center; font-size: 0.78rem; color: #888888; margin-top: 15px; border-top: 1px solid #eeeeee; padding-top: 10px;">
+    <div style="text-align: center; font-size: 0.78rem; color: #888888; margin-top: 15px; border-top: 1px solid #e0e0e0; padding-top: 10px;">
       Source : gard30.fr — Mise à jour automatique le {generated_at}
     </div>
 
