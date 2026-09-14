@@ -173,7 +173,7 @@ def render_html(garde_date: str, pharmacies: list) -> str:
 </head>
 <body>
   <div style="margin-bottom:30px; text-align:center">
-    <h2><strong>💊 Pharmacies de garde</strong></h2>
+    <h2><strong>💊 Pharmacies de garde du Gard</strong></h2>
     {date_line}
   </div>
   <div style="align-items:stretch; display:grid; gap:20px; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); margin-bottom:20px">
