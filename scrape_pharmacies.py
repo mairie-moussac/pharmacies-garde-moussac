@@ -2,12 +2,7 @@
 """
 Récupère la liste des pharmacies de garde du Gard depuis
 https://www.gard30.fr/pharmacies-de-garde-dans-le-gard/
-et génère un fichier index.html prêt à être affiché en iframe
-(ex. sur le site de la mairie de Moussac).
-
-Ce script est destiné à être lancé automatiquement (voir
-.github/workflows/update.yml), mais peut aussi être lancé à la main :
-    python scrape_pharmacies.py
+et génère un fichier index.html prêt à être affiché en iframe.
 """
 
 import re
@@ -32,7 +27,6 @@ def fetch_page(url: str) -> BeautifulSoup:
 
 
 def find_list_heading(soup: BeautifulSoup):
-    """Trouve le titre 'Liste des pharmacies de garde le JJ/MM/AAAA'."""
     for tag in soup.find_all(["h1", "h2", "h3"]):
         if tag.get_text(strip=True).lower().startswith("liste des pharmacies de garde"):
             return tag
@@ -50,52 +44,64 @@ def extract_pharmacies(soup: BeautifulSoup):
     date_match = re.search(r"(\d{2}/\d{2}/\d{4})", heading.get_text())
     garde_date = date_match.group(1) if date_match else None
 
+    # Trouve tous les h3 (un par pharmacie) entre ce titre et le prochain h2
+    h3_list = []
+    el = heading.find_next(["h2", "h3"])
+    while el is not None and el.name == "h3":
+        h3_list.append(el)
+        el = el.find_next(["h2", "h3"])
+
     pharmacies = []
-    current = heading.find_next_sibling()
+    for i, h3 in enumerate(h3_list):
+        name = h3.get_text(strip=True).replace("Pharmacie de garde ", "")
+        boundary = h3_list[i + 1] if i + 1 < len(h3_list) else heading.find_next("h2")
 
-    # On s'arrête au prochain titre de même niveau (h2), qui marque
-    # la fin de la liste hebdomadaire sur la page source.
-    while current is not None and current.name != "h2":
-        if current.name == "h3":
-            name = current.get_text(strip=True).replace("Pharmacie de garde ", "")
-            secteur = ""
-            address = ""
-            phone = ""
-            maps_link = ""
+        secteur = ""
+        address = ""
+        phone = ""
+        maps_link = ""
 
-            node = current.find_next_sibling()
+        # Parcourt TOUT le contenu qui suit, dans l'ordre du document,
+        # peu importe le niveau d'imbrication (div, section, etc.)
+        node = h3.find_next(True)
+        steps = 0
+        while node is not None and node is not boundary and steps < 200:
+            steps += 1
 
-            # Le secteur couvert est dans un <p><strong>...</strong></p>
-            if node and node.name == "p":
-                strong = node.find("strong")
-                if strong:
-                    secteur = strong.get_text(strip=True)
-                node = node.find_next_sibling()
+            if node.name == "strong" and not secteur:
+                txt = node.get_text(strip=True)
+                if txt and "adresse" not in txt.lower() and "téléphone" not in txt.lower():
+                    secteur = txt
 
-            # Adresse / téléphone / lien Maps sont dans le <ul> suivant
-            if node and node.name == "ul":
-                for li in node.find_all("li"):
-                    text = li.get_text(" ", strip=True)
-                    lower = text.lower()
-                    if lower.startswith("adresse"):
-                        address = text.split(":", 1)[-1].strip()
-                    elif lower.startswith("téléphone") or lower.startswith("telephone"):
-                        a = li.find("a")
-                        phone = a.get_text(strip=True) if a else text.split(":", 1)[-1].strip()
-                    elif "itinéraire" in lower or "itineraire" in lower:
-                        a = li.find("a", href=True)
-                        if a:
-                            maps_link = a["href"]
+            if node.name == "li":
+                text = node.get_text(" ", strip=True)
+                lower = text.lower()
+                if lower.startswith("adresse") and not address:
+                    address = text.split(":", 1)[-1].strip()
+                elif ("téléphone" in lower or "telephone" in lower) and not phone:
+                    a = node.find("a")
+                    phone = a.get_text(strip=True) if a else text.split(":", 1)[-1].strip()
+                elif ("itinéraire" in lower or "itineraire" in lower) and not maps_link:
+                    a = node.find("a", href=True)
+                    if a:
+                        maps_link = a["href"]
 
-            pharmacies.append({
-                "name": name,
-                "secteur": secteur,
-                "address": address,
-                "phone": phone,
-                "maps_link": maps_link,
-            })
+            if node.name == "a":
+                href = node.get("href", "")
+                if href.startswith("tel:") and not phone:
+                    phone = node.get_text(strip=True)
+                elif "google.com/maps" in href and not maps_link:
+                    maps_link = href
 
-        current = current.find_next_sibling()
+            node = node.find_next(True)
+
+        pharmacies.append({
+            "name": name,
+            "secteur": secteur,
+            "address": address,
+            "phone": phone,
+            "maps_link": maps_link,
+        })
 
     return garde_date, pharmacies
 
