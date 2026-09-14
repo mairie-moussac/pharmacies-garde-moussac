@@ -3,11 +3,16 @@
 Récupère la liste des pharmacies de garde du Gard depuis
 https://www.gard30.fr/pharmacies-de-garde-dans-le-gard/
 et génère un fichier index.html prêt à être affiché en iframe.
+
+Cette version extrait uniquement le TEXTE VISIBLE de la page (peu
+importe les balises HTML utilisées : div, p, li, strong, etc.),
+ce qui la rend robuste même si le site change sa mise en page.
 """
 
 import re
 import sys
 from datetime import datetime
+from urllib.parse import quote_plus
 
 import requests
 from bs4 import BeautifulSoup
@@ -19,6 +24,10 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; MairieMoussacBot/1.0)"
 }
 
+LABEL_ADRESSE = ("adresse",)
+LABEL_TEL = ("téléphone", "telephone", "tél", "tel :", "tel:")
+LABEL_ITINERAIRE = ("itinéraire", "itineraire")
+
 
 def fetch_page(url: str) -> BeautifulSoup:
     resp = requests.get(url, headers=HEADERS, timeout=20)
@@ -26,82 +35,83 @@ def fetch_page(url: str) -> BeautifulSoup:
     return BeautifulSoup(resp.text, "html.parser")
 
 
-def find_list_heading(soup: BeautifulSoup):
-    for tag in soup.find_all(["h1", "h2", "h3"]):
-        if tag.get_text(strip=True).lower().startswith("liste des pharmacies de garde"):
-            return tag
-    return None
+def get_text_lines(soup: BeautifulSoup):
+    """Texte visible de la page, une entrée par ligne, sans dépendre
+    des balises HTML précises."""
+    raw = soup.get_text("\n")
+    lines = [re.sub(r"\s+", " ", l).strip() for l in raw.split("\n")]
+    return [l for l in lines if l]
 
 
 def extract_pharmacies(soup: BeautifulSoup):
-    heading = find_list_heading(soup)
-    if heading is None:
+    lines = get_text_lines(soup)
+
+    start_idx = None
+    garde_date = None
+    for i, l in enumerate(lines):
+        if l.lower().startswith("liste des pharmacies de garde"):
+            start_idx = i
+            m = re.search(r"(\d{2}/\d{2}/\d{4})", l)
+            if m:
+                garde_date = m.group(1)
+            break
+
+    if start_idx is None:
         raise RuntimeError(
-            "Titre 'Liste des pharmacies de garde' introuvable — "
+            "Ligne 'Liste des pharmacies de garde' introuvable — "
             "la page source a peut-être changé de structure."
         )
 
-    date_match = re.search(r"(\d{2}/\d{2}/\d{4})", heading.get_text())
-    garde_date = date_match.group(1) if date_match else None
+    end_markers = ("pour choisir la pharmacie de garde", "quel est le numéro")
+    end_idx = len(lines)
+    for i in range(start_idx + 1, len(lines)):
+        low = lines[i].lower()
+        if any(low.startswith(m) for m in end_markers):
+            end_idx = i
+            break
 
-    # Trouve tous les h3 (un par pharmacie) entre ce titre et le prochain h2
-    h3_list = []
-    el = heading.find_next(["h2", "h3"])
-    while el is not None and el.name == "h3":
-        h3_list.append(el)
-        el = el.find_next(["h2", "h3"])
+    section = lines[start_idx + 1:end_idx]
 
     pharmacies = []
-    for i, h3 in enumerate(h3_list):
-        name = h3.get_text(strip=True).replace("Pharmacie de garde ", "")
-        boundary = h3_list[i + 1] if i + 1 < len(h3_list) else heading.find_next("h2")
+    current = None
+    i = 0
+    while i < len(section):
+        line = section[i]
+        low = line.lower()
 
-        secteur = ""
-        address = ""
-        phone = ""
-        maps_link = ""
+        if low.startswith("pharmacie de garde"):
+            if current:
+                pharmacies.append(current)
+            name = re.sub(r"(?i)^pharmacie de garde\s*[:\-]?\s*", "", line).strip()
+            current = {"name": name, "secteur": "", "address": "", "phone": ""}
+            i += 1
+            continue
 
-        # Parcourt TOUT le contenu qui suit, dans l'ordre du document,
-        # peu importe le niveau d'imbrication (div, section, etc.)
-        node = h3.find_next(True)
-        steps = 0
-        while node is not None and node is not boundary and steps < 200:
-            steps += 1
+        if current is not None:
+            if low.startswith(LABEL_ADRESSE):
+                value = line.split(":", 1)[-1].strip() if ":" in line else ""
+                if not value and i + 1 < len(section):
+                    i += 1
+                    value = section[i]
+                current["address"] = value
 
-            if node.name == "strong" and not secteur:
-                txt = node.get_text(strip=True)
-                if txt and "adresse" not in txt.lower() and "téléphone" not in txt.lower():
-                    secteur = txt
+            elif low.startswith(LABEL_TEL):
+                value = line.split(":", 1)[-1].strip() if ":" in line else ""
+                if not value and i + 1 < len(section):
+                    i += 1
+                    value = section[i]
+                current["phone"] = value
 
-            if node.name == "li":
-                text = node.get_text(" ", strip=True)
-                lower = text.lower()
-                if lower.startswith("adresse") and not address:
-                    address = text.split(":", 1)[-1].strip()
-                elif ("téléphone" in lower or "telephone" in lower) and not phone:
-                    a = node.find("a")
-                    phone = a.get_text(strip=True) if a else text.split(":", 1)[-1].strip()
-                elif ("itinéraire" in lower or "itineraire" in lower) and not maps_link:
-                    a = node.find("a", href=True)
-                    if a:
-                        maps_link = a["href"]
+            elif any(k in low for k in LABEL_ITINERAIRE):
+                pass  # le lien Maps est régénéré à partir de l'adresse
 
-            if node.name == "a":
-                href = node.get("href", "")
-                if href.startswith("tel:") and not phone:
-                    phone = node.get_text(strip=True)
-                elif "google.com/maps" in href and not maps_link:
-                    maps_link = href
+            elif not current["secteur"]:
+                current["secteur"] = line
 
-            node = node.find_next(True)
+        i += 1
 
-        pharmacies.append({
-            "name": name,
-            "secteur": secteur,
-            "address": address,
-            "phone": phone,
-            "maps_link": maps_link,
-        })
+    if current:
+        pharmacies.append(current)
 
     return garde_date, pharmacies
 
@@ -110,12 +120,13 @@ def render_html(garde_date: str, pharmacies: list) -> str:
     generated_at = datetime.now().strftime("%d/%m/%Y à %H:%M")
     rows = []
     for p in pharmacies:
-        maps_html = (
-            f'<a href="{p["maps_link"]}" target="_blank" rel="noopener">Itinéraire</a>'
-            if p["maps_link"] else ""
-        )
         tel_digits = re.sub(r"[^0-9+]", "", p["phone"]) if p["phone"] else ""
         phone_html = f'<a href="tel:{tel_digits}">{p["phone"]}</a>' if p["phone"] else ""
+
+        maps_html = ""
+        if p["address"]:
+            maps_url = f"https://www.google.com/maps/search/?api=1&query={quote_plus(p['address'])}"
+            maps_html = f'<a href="{maps_url}" target="_blank" rel="noopener">Itinéraire</a>'
 
         rows.append(f"""
         <div class="pharmacie">
