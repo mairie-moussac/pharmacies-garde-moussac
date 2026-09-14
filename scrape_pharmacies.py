@@ -2,7 +2,12 @@
 """
 Récupère la liste des pharmacies de garde du Gard depuis
 https://www.gard30.fr/pharmacies-de-garde-dans-le-gard/
-et génère un fichier index.html aux couleurs de la mairie de Moussac.
+et génère un fichier index.html prêt à être affiché en iframe.
+
+Cette version extrait uniquement le TEXTE VISIBLE de la page (peu
+importe les balises HTML utilisées : div, p, li, strong, etc.),
+ce qui la rend robuste même si le site change sa mise en page.
+Le HTML généré reprend la charte graphique du site de Moussac.
 """
 
 import re
@@ -32,6 +37,8 @@ def fetch_page(url: str) -> BeautifulSoup:
 
 
 def get_text_lines(soup: BeautifulSoup):
+    """Texte visible de la page, une entrée par ligne, sans dépendre
+    des balises HTML précises."""
     raw = soup.get_text("\n")
     lines = [re.sub(r"\s+", " ", l).strip() for l in raw.split("\n")]
     return [l for l in lines if l]
@@ -97,7 +104,7 @@ def extract_pharmacies(soup: BeautifulSoup):
                 current["phone"] = value
 
             elif any(k in low for k in LABEL_ITINERAIRE):
-                pass
+                pass  # le lien Maps est régénéré à partir de l'adresse
 
             elif not current["secteur"]:
                 current["secteur"] = line
@@ -112,47 +119,46 @@ def extract_pharmacies(soup: BeautifulSoup):
 
 def render_html(garde_date: str, pharmacies: list) -> str:
     generated_at = datetime.now().strftime("%d/%m/%Y à %H:%M")
-    date_str = f"du {garde_date}" if garde_date else ""
-
-    rows = []
+    cards = []
     for p in pharmacies:
         tel_digits = re.sub(r"[^0-9+]", "", p["phone"]) if p["phone"] else ""
-        
-        phone_button = ""
-        if p["phone"]:
-            phone_button = (
-                f'<a href="tel:{tel_digits}" style="display: inline-block; background-color: #eef6ff; '
-                f'color: #0056b3; padding: 6px 12px; border-radius: 20px; font-weight: bold; '
-                f'text-decoration: none; font-size: 0.88rem; margin-right: 6px; margin-top: 6px;">'
-                f'📞 {p["phone"]}</a>'
-            )
+        phone_html = (
+            f'<p style="margin:4px 0 0 0;"><a href="tel:{tel_digits}" style="color:#2980b9; text-decoration:none; font-weight:bold;">📞 {p["phone"]}</a></p>'
+            if p["phone"] else ""
+        )
 
-        maps_button = ""
+        maps_html = ""
         if p["address"]:
             maps_url = f"https://www.google.com/maps/search/?api=1&query={quote_plus(p['address'])}"
-            maps_button = (
-                f'<a href="{maps_url}" target="_blank" rel="noopener" style="display: inline-block; '
-                f'background-color: #0056b3; color: #ffffff !important; padding: 6px 12px; '
-                f'border-radius: 20px; font-weight: bold; text-decoration: none; font-size: 0.88rem; margin-top: 6px;">'
-                f'📍 Itinéraire Maps</a>'
+            maps_html = (
+                f'<p style="margin-top:12px;"><a href="{maps_url}" target="_blank" rel="noopener" '
+                f'style="display:inline-block; padding:8px 15px; background-color:#2980b9; color:#fff; '
+                f'text-decoration:none; border-radius:4px; font-size:14px;">Voir sur la carte</a></p>'
             )
 
         secteur_html = (
-            f'<div style="color: #666666; font-style: italic; font-size: 0.85rem; margin-bottom: 4px;">'
-            f'Secteur : {p["secteur"]}</div>'
+            f'<p style="margin:0 0 8px 0; color:#666; font-style:italic; font-size:0.9em;">{p["secteur"]}</p>'
             if p["secteur"] else ""
         )
 
-        rows.append(f"""
-        <div style="background-color: #ffffff; border: 1px solid #dce5ef; border-left: 5px solid #0056b3; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
-          <h3 style="margin: 0 0 4px 0; color: #0056b3; font-size: 1.1rem; font-family: Arial, sans-serif;">{p['name']}</h3>
+        cards.append(f"""
+        <div style="background:#f9f9f9; border-radius:8px; border:1px solid #e0e0e0; box-sizing:border-box; display:flex; flex-direction:column; justify-content:flex-start; padding:20px; text-align:left;">
+          <h3 style="margin:0 0 6px 0;">💊 {p['name']}</h3>
           {secteur_html}
-          <div style="margin: 4px 0 6px 0; font-size: 0.92rem; color: #333333;">🏠 {p['address']}</div>
-          <div style="margin-top: 8px;">
-            {phone_button}
-            {maps_button}
-          </div>
+          <p style="margin:0;">{p['address']}</p>
+          {phone_html}
+          {maps_html}
         </div>""")
+
+    date_line = (
+        f"<p style=\"margin-left:auto; margin-right:auto;\">Pharmacies de garde ouvertes le {garde_date} (dimanches et jours fériés).</p>"
+        if garde_date else "<p style=\"margin-left:auto; margin-right:auto;\">Pharmacies de garde ouvertes les dimanches et jours fériés.</p>"
+    )
+
+    cards_html = (
+        ''.join(cards) if cards
+        else '<p style="margin-left:auto; margin-right:auto;">Aucune donnée disponible pour le moment.</p>'
+    )
 
     return f"""<!DOCTYPE html>
 <html lang="fr">
@@ -160,38 +166,20 @@ def render_html(garde_date: str, pharmacies: list) -> str:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pharmacies de garde - Gard</title>
+<style>
+  body {{ font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 16px; color: #222; background:#fff; }}
+  footer {{ font-size: 0.75em; color: #888; margin-top: 20px; text-align:center; }}
+</style>
 </head>
-<body style="margin: 0; padding: 10px; font-family: Arial, Helvetica, sans-serif; background-color: #f4f7f9; color: #333333;">
-
-  <div style="width: 100%; max-width: 100%; box-sizing: border-box;">
-
-    <!-- En-tête Moussac -->
-    <div style="background-color: #f0f7ff; border: 1px solid #cce3ff; border-radius: 8px; padding: 15px; text-align: center; margin-bottom: 15px;">
-      <h2 style="color: #0056b3; margin: 0 0 6px 0; font-size: 1.3rem;">
-        🏥 Pharmacies de garde {date_str}
-      </h2>
-      <p style="margin: 0; color: #555555; font-size: 0.95rem;">
-        Mairie de Moussac — Information Santé
-      </p>
-    </div>
-
-    <!-- Consignes / Informations complémentaires -->
-    <div style="background-color: #fff9e6; border-left: 4px solid #ffc107; padding: 12px 15px; margin-bottom: 15px; border-radius: 4px; font-size: 0.88rem; line-height: 1.5; color: #444444;">
-      <strong>Information :</strong> La nuit, les dimanches et jours fériés, vous pouvez également composer le <strong>3237</strong> (0,35 € / min) ou contacter la Gendarmerie. En cas d'urgence vitale, composez le <strong>15</strong> (SAMU).
-    </div>
-
-    <!-- Liste des pharmacies -->
-    <div style="width: 100%;">
-      {''.join(rows) if rows else '<div style="background: #ffffff; padding: 20px; border-radius: 8px; text-align: center; color: #666666;">Aucune pharmacie de garde répertoriée pour le moment.</div>'}
-    </div>
-
-    <!-- Pied de page -->
-    <div style="text-align: center; font-size: 0.78rem; color: #888888; margin-top: 15px; border-top: 1px solid #e0e0e0; padding-top: 10px;">
-      Source : gard30.fr — Mise à jour automatique le {generated_at}
-    </div>
-
+<body>
+  <div style="margin-bottom:30px; text-align:center">
+    <h2><strong>💊 Pharmacies de garde</strong></h2>
+    {date_line}
   </div>
-
+  <div style="align-items:stretch; display:grid; gap:20px; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); margin-bottom:20px">
+    {cards_html}
+  </div>
+  <footer>Source : gard30.fr — page régénérée automatiquement le {generated_at}</footer>
 </body>
 </html>"""
 
