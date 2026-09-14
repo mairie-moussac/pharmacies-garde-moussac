@@ -7,7 +7,6 @@ et génère un fichier index.html prêt à être affiché en iframe.
 Cette version extrait uniquement le TEXTE VISIBLE de la page (peu
 importe les balises HTML utilisées : div, p, li, strong, etc.),
 ce qui la rend robuste même si le site change sa mise en page.
-Le HTML généré reprend la charte graphique du site de Moussac.
 """
 
 import re
@@ -151,8 +150,8 @@ def render_html(garde_date: str, pharmacies: list) -> str:
         </div>""")
 
     date_line = (
-        f"<p style=\"margin-left:auto; margin-right:auto;\">Pharmacies de garde ouvertes le {garde_date} (dimanches et jours fériés).</p>"
-        if garde_date else "<p style=\"margin-left:auto; margin-right:auto;\">Pharmacies de garde ouvertes les dimanches et jours fériés.</p>"
+        f"<p style=\"margin-left:auto; margin-right:auto; font-size:1.4em; font-weight:bold;\">💊 Pharmacies de garde ouvertes le {garde_date} (dimanches et jours fériés).</p>"
+        if garde_date else "<p style=\"margin-left:auto; margin-right:auto; font-size:1.4em; font-weight:bold;\">💊 Pharmacies de garde ouvertes les dimanches et jours fériés.</p>"
     )
 
     cards_html = (
@@ -165,7 +164,7 @@ def render_html(garde_date: str, pharmacies: list) -> str:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pharmacies de garde - Gard</title>
+<title>Pharmacie de garde du Gard</title>
 <style>
   body {{ font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 16px; color: #222; background:#fff; }}
   footer {{ font-size: 0.75em; color: #888; margin-top: 20px; text-align:center; }}
@@ -173,7 +172,6 @@ def render_html(garde_date: str, pharmacies: list) -> str:
 </head>
 <body>
   <div style="margin-bottom:30px; text-align:center">
-    <h2><strong>💊 Pharmacies de garde du Gard</strong></h2>
     {date_line}
   </div>
   <div style="align-items:stretch; display:grid; gap:20px; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); margin-bottom:20px">
